@@ -143,6 +143,51 @@ test('a finished run leaves its build and test notes under its row', async ($, o
   await ui.unmount()
 })
 
+test("a background task's notification shows its results", async ($, on) => {
+  let id = ''
+  on('env.get', () => ({ value: '/tmp/x' }))
+  on('clock.every', () => ({ value: undefined }))
+  on('fs.read', () => ({ value: 'Build\tbuild\t0\t0\t0\t18.48\n' }))
+  on('process.run', () => ({
+    value: {
+      exitCode: 0,
+      stdout: '',
+      stderr: '',
+      isStdoutTruncated: false,
+      isStderrTruncated: false,
+    },
+  }))
+  on('tool.check', () => ({ decision: 'allow' }))
+  on('tool.call', (_, e) => {
+    id = e.tool_use_id ?? ''
+
+    return { result: {} }
+  })
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+
+    return <Text>engine</Text>
+  })
+
+  await $.tool.call({ tool: 'Bash', command: 'cargo build' })
+
+  const ui = await $.ui.mount({
+    plugin: 'cargo-progress',
+    component: 'UserMessage',
+    surface: 'terminal',
+    props: {
+      text: 'Background command "cargo build" completed (exit code 0)',
+      origin: { kind: 'task-notification' },
+      isExpanded: false,
+      task: { id: 'b1', status: 'completed', toolUseId: id },
+    },
+  })
+
+  const note = await ui.find({ type: 'Text', text: /^cargo build/ })
+  expect(note?.text).toBe('cargo build  ✓ clean · 18.5s')
+  await ui.unmount()
+})
+
 test('a cargo frame parses into a bar', () => {
   const frame = parseFrame('    Building [=====>      ] 3/5: a, e      ')
 

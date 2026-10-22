@@ -165,6 +165,9 @@ async function pollBackground($: EngineInterface, id: string, file: string) {
   }
 }
 
+const isBackground = (input: unknown) =>
+  (input as { run_in_background?: unknown } | null)?.run_in_background === true
+
 type Ui = Pick<ElementTable, 'Box' | 'Text'>
 
 function ProgressLine(
@@ -304,13 +307,17 @@ export const register: Register = on => {
     const live = await read($, runs)
     const done = await read($, results)
     const elsewhere = await read($, background)
-    const ids = e.props.calls.flatMap(call =>
-      call.tool === 'Bash' && call.tool_use_id ? [call.tool_use_id] : [],
+    const calls = e.props.calls.flatMap(call =>
+      call.tool === 'Bash' && call.tool_use_id
+        ? [{ id: call.tool_use_id, isBackground: isBackground(call.input) }]
+        : [],
     )
-    const progress = ids
-      .map(id => (elsewhere[id] ? undefined : live[id]))
+    const progress = calls
+      .map(call => (elsewhere[call.id] ? undefined : live[call.id]))
       .find(Boolean)
-    const finished = ids.flatMap(id => done[id] ?? [])
+    const finished = calls.flatMap(call =>
+      call.isBackground ? [] : (done[call.id] ?? []),
+    )
     const drawn = await next(e)
     if (!progress && finished.length === 0) {
       return drawn
@@ -328,7 +335,9 @@ export const register: Register = on => {
 
     const id = e.props.tool_use_id
     const progress = e.props.isRunning ? (await read($, runs))[id] : undefined
-    const finished = (await read($, results))[id] ?? []
+    const finished = isBackground(e.props.input)
+      ? []
+      : ((await read($, results))[id] ?? [])
     const drawn = await next(e)
     if (!progress && finished.length === 0) {
       return drawn
@@ -337,6 +346,25 @@ export const register: Register = on => {
     const columns = e.viewport?.columns ?? 80
 
     return annotate($.ui.resolve(e), drawn, columns, progress, finished)
+  })
+
+  // A background call's results go under the notification that says it has
+  // finished, which names the call that started it, not under the call's row.
+  on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
+    const id = e.props.task?.toolUseId
+    if (!id) {
+      return next(e)
+    }
+
+    const finished = (await read($, results))[id] ?? []
+    const drawn = await next(e)
+    if (finished.length === 0) {
+      return drawn
+    }
+
+    const columns = e.viewport?.columns ?? 80
+
+    return annotate($.ui.resolve(e), drawn, columns, undefined, finished)
   })
 
   // A background call has no running row to draw under, so its bar goes in the
