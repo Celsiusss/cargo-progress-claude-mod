@@ -1,0 +1,13 @@
+#!/bin/sh
+# Usage: cargo-progress <progress file> [cargo args...]
+#
+# Runs cargo through cargo-progress.pl with cargo's progress bar forced on, or
+# plain cargo where perl is missing. The mod defines a `cargo` shell function
+# that calls this script; `cargo` here is the real one.
+file=$1
+shift
+if command -v perl >/dev/null 2>&1; then
+    CARGO_TERM_PROGRESS_WHEN=always CARGO_TERM_PROGRESS_WIDTH=100 \
+        exec perl "$(dirname "$0")/cargo-progress.pl" "$file" cargo "$@"
+fi
+exec cargo "$@"

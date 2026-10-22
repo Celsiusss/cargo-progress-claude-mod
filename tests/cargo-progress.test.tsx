@@ -1,6 +1,18 @@
 import { expect, test } from 'claude-code/testing'
 
-import { describeResult, drawBar, parseFrame, parseResults } from '../hooks/progress'
+import {
+  cargoLabel,
+  describeResult,
+  drawBar,
+  parseFrame,
+  parseResults,
+} from '../hooks/progress'
+
+test('a background run is named by its cargo subcommand', () => {
+  expect(cargoLabel('cd server && cargo run --release')).toBe('cargo run')
+  expect(cargoLabel('cargo +nightly build 2>&1 | tail')).toBe('cargo build')
+  expect(cargoLabel('cargo --locked')).toBe('cargo')
+})
 
 test('a cargo command runs wrapped, and is checked as written too', async ($, on) => {
   let ran = ''
@@ -20,9 +32,12 @@ test('a cargo command runs wrapped, and is checked as written too', async ($, on
 
   await $.tool.call({ tool: 'Bash', command: 'cargo build --release' })
 
-  expect(ran).toMatch(/^cargo\(\) \{/)
-  expect(ran).toMatch(/CARGO_TERM_PROGRESS_WHEN=always/)
-  expect(ran.endsWith('\ncargo build --release')).toBe(true)
+  const [wrapper, command] = ran.split('\n')
+  expect(wrapper).toMatch(
+    /^cargo\(\) \(exec sh \S+\/bin\/cargo-progress \/tmp\/x\/cargo-progress-\w+ "\$@"\)$/,
+  )
+  expect(wrapper).not.toMatch(/[{}']/)
+  expect(command).toBe('cargo build --release')
   expect(checked).toContain('cargo build --release')
 })
 
@@ -44,6 +59,24 @@ test('a rule denying the command as written denies the wrapped call', async ($, 
   expect(ran).toBe(false)
   expect(result.isError).toBe(true)
   expect(result.text).toMatch(/denied by plugin cargo-progress/)
+})
+
+test('a background cargo command runs wrapped too', async ($, on) => {
+  let ran = ''
+  on('env.get', () => ({ value: '/tmp/x' }))
+  on('clock.every', () => ({ value: undefined }))
+  on('clock.now', () => ({ value: 0 }))
+  on('tool.check', () => ({ decision: 'allow' }))
+  on('tool.call', (_, e) => {
+    ran = e.tool === 'Bash' ? e.command : ''
+
+    return { result: {} }
+  })
+
+  await $.tool.call({ tool: 'Bash', command: 'cargo run', run_in_background: true })
+
+  expect(ran).toMatch(/^cargo\(\) \(exec sh \S+\/bin\/cargo-progress /)
+  expect(ran.endsWith('\ncargo run')).toBe(true)
 })
 
 test('other commands run untouched', async ($, on) => {

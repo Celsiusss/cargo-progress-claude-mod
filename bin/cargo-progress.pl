@@ -34,6 +34,10 @@ my ($subcommand) = grep { !/^[-+]/ } @ARGV[1 .. $#ARGV];
 $subcommand //= '';
 $subcommand = { b => 'build', c => 'check', t => 'test', r => 'run' }->{$subcommand} // $subcommand;
 my $built = $subcommand =~ /^(build|check|clippy|rustc|fix)$/;
+my $testing = $subcommand =~ /^(test|bench)$/;
+# Set once cargo has said `Finished`: what follows is the program's or the
+# tests' own output, not the compiler's.
+my $compiled = 0;
 my $err = gensym;
 # open3 closes the handle it hands on; give it a copy so fd 0 stays taken.
 my $in;
@@ -75,9 +79,14 @@ sub err_segment {
 # backticked names aside, are taken to be the same lint.
 sub diagnostic {
     my ($s) = @_;
+    return if $compiled;
     if ($s =~ /^\s+Finished .* in (?:(\d+)m )?([\d.]+)s$/) {
         $seconds = ($1 // 0) * 60 + $2;
         $open_error = '';
+        $compiled = 1;
+        # The build's bar is done; an empty frame takes it down while a
+        # program `cargo run` started keeps running.
+        frame('');
     }
     elsif ($s =~ /^error: (could not compile|aborting due to|test failed|\d+ targets? failed)/
         || $s =~ /^warning: `[^`]+` \(.*\) generated \d+ warnings?/
@@ -107,6 +116,7 @@ sub failure {
 # (`-q`) a character per test as it finishes, ending each row with a count.
 sub out_line {
     my ($line) = @_;
+    return unless $testing;
     if ($line =~ /^test (.+?) \.\.\. FAILED$/ || $line =~ /^(\S+) --- FAILED$/) { failure($1) }
     if ($line =~ /^running (\d+) tests?$/) { ($done, $total, $row_start) = (0, $1, 0); tests() if $total }
     elsif ($total && $line =~ /^test \S.* \.\.\.( |$)/) { $done++; $row_start = $done; tests() }

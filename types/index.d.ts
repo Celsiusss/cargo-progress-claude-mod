@@ -30,6 +30,8 @@ declare module 'claude-code' {
     'cargo-progress': {
       runs: Record<string, CargoProgress>
       results: Record<string, CargoResult[]>
+      /** Background calls still compiling, by call id: what to call them. */
+      background: Record<string, string>
     }
   }
 }

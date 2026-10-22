@@ -9,19 +9,25 @@ const INVOKES_CARGO = /(^|[\s;&|(`])cargo(\s|$)/m
 
 export const isCargoCommand = (command: string) => INVOKES_CARGO.test(command)
 
-const quote = (text: string) => `'${text.replace(/'/g, `'\\''`)}'`
+/** `cargo run` for a command that runs `cargo +nightly run --release`. */
+export const cargoLabel = (command: string) => {
+  const match = /(?:^|[\s;&|(`])cargo\s+(?:\+\S+\s+)?([a-z][\w-]*)/m.exec(command)
 
-// Cargo only draws its bar on a TTY; forced on, `script` runs cargo, strips the
-// bar's frames from its output and keeps the latest one in `file`. Without
-// perl or the script, cargo runs as it would have.
-export const wrapCommand = (command: string, file: string, script: string) => {
-  const fn =
-    `cargo() { if command -v perl >/dev/null 2>&1 && [ -r ${quote(script)} ]; then ` +
-    `CARGO_TERM_PROGRESS_WHEN=always CARGO_TERM_PROGRESS_WIDTH=100 ` +
-    `perl ${quote(script)} ${quote(file)} cargo "$@"; else command cargo "$@"; fi; }`
-
-  return `${fn}\n${command}`
+  return match ? `cargo ${match[1]}` : 'cargo'
 }
+
+// Quotes only what needs it: the permission prompt shows this line, and plain
+// paths read more easily there.
+const quote = (text: string) =>
+  /^[\w./+-]+$/.test(text) ? text : `'${text.replace(/'/g, `'\\''`)}'`
+
+// Cargo only draws its bar on a TTY; `script` forces it on and runs cargo
+// through a filter that strips the bar's frames from its output and keeps the
+// latest one in `file`. The function's body is a subshell, not a `{ }` group,
+// which the permission check reads as possible obfuscation once it holds
+// quotes.
+export const wrapCommand = (command: string, file: string, script: string) =>
+  `cargo() (exec sh ${quote(script)} ${quote(file)} "$@")\n${command}`
 
 export const parseResults = (text: string): CargoResult[] =>
   text.split('\n').flatMap((line): CargoResult[] => {

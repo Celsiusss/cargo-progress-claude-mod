@@ -40,13 +40,13 @@ It works on any cargo command Claude runs through the Bash tool, including piped
 
 ## How it works
 
-The mod puts a `cargo` shell function in front of the command. The function runs `bin/cargo-progress.pl`, which starts cargo with its bar forced on, passes its output through and records the latest frame and the results in a temporary file. The mod reads that file and draws the bar and the notes. Commands run in the background, and cargo called by path, are left alone.
+The mod puts a one-line `cargo` shell function in front of the command. The function runs `bin/cargo-progress`, which starts cargo through `bin/cargo-progress.pl` with its bar forced on; that script passes cargo's output through and records the latest frame and the results in a temporary file. The mod reads that file and draws the bar and the notes. For a command Claude runs in the background, such as `cargo run` starting a server, the bar shows above the prompt until cargo has finished compiling. Cargo called by path is left alone.
 
 ## What the mod does on your machine
 
-- **Changes Bash commands that call `cargo`.** Before such a command runs, the mod puts a `cargo` shell function in front of it, so `cargo` runs through `bin/cargo-progress.pl`. Claude's own command follows unchanged. Other Bash commands, and cargo commands run in the background, are passed on untouched.
-- **Starts these programs:** `perl`, running the mod's own `bin/cargo-progress.pl`, which in turn runs the `cargo` command Claude asked for; and `rm -f` on the mod's temporary file once the command has finished.
-- **Reads** only that temporary file, `$TMPDIR/claude-cargo-progress-<call id>` (or under `/tmp`), which holds the latest progress frame and the result counts. It reads `TMPDIR` to find it.
+- **Changes Bash commands that call `cargo`.** Before such a command runs, the mod puts one line in front of it, `cargo() (exec sh <mod>/bin/cargo-progress <temp file> "$@")`, so `cargo` runs through the mod's scripts. Claude's own command follows unchanged. Other Bash commands are passed on untouched.
+- **Starts these programs:** `sh`, running the mod's own `bin/cargo-progress`, which runs `perl` with `bin/cargo-progress.pl` (or plain `cargo` where perl is missing), which in turn runs the `cargo` command Claude asked for; and `rm -f` on the mod's temporary file once the command has finished.
+- **Reads** only that temporary file, `$TMPDIR/cargo-progress-<call id>` (or under `/tmp`), which holds the latest progress frame and the result counts. It reads `TMPDIR` to find it.
 - **Sends nothing anywhere.** The mod makes no network calls; the bar and the notes are drawn locally in your terminal.
 - **Permission checks.** Because the command that runs is the wrapped one, the mod also asks Claude Code's permission check about the command Claude wrote. If your rules deny that command, the mod denies the call; otherwise the usual permission check decides on the wrapped command. The mod never allows a call itself.
 
