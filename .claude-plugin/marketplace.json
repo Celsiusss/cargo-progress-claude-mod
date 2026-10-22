@@ -1,0 +1,5 @@
+{
+  "name": "cargo-progress-claude-mod",
+  "owner": { "name": "Celsiusss" },
+  "plugins": [{ "name": "cargo-progress", "source": "./" }]
+}

@@ -1,0 +1,8 @@
+{
+  "name": "cargo-progress",
+  "version": "0.1.0",
+  "description": "Shows cargo's progress bar under a running cargo command instead of a line per crate",
+  "author": { "name": "Celsiusss" },
+  "license": "CC0-1.0",
+  "types": "./types/index.d.ts"
+}
