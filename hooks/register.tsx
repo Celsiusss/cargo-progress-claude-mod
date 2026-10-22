@@ -14,12 +14,13 @@ import {
 const runs = atom({ plugin: 'cargo-progress', key: 'runs' } as const, {})
 const results = atom({ plugin: 'cargo-progress', key: 'results' } as const, {})
 
-const POLL_MS = 150
+const POLL_MS = 50
 const KEPT_RESULTS = 50
 
 const TONE_COLOR = { ok: 'green', warning: 'yellow', error: 'red' } as const
 
 const originals = new Map<string, string>()
+const lastFrames = new Map<string, string>()
 
 async function poll($: EngineInterface, id: string, file: string) {
   let frame: string
@@ -28,6 +29,12 @@ async function poll($: EngineInterface, id: string, file: string) {
   } catch {
     return
   }
+
+  // Only a new frame is worth a redraw.
+  if (frame === lastFrames.get(id)) {
+    return
+  }
+  lastFrames.set(id, frame)
 
   const progress = parseFrame(frame)
   if (progress && originals.has(id)) {
@@ -122,6 +129,7 @@ export const register: Register = on => {
     } finally {
       timer.cancel()
       originals.delete(id)
+      lastFrames.delete(id)
       await update($, runs, ({ [id]: _, ...rest }) => rest)
       // An interrupted call refuses further calls on `$`, and what cargo got
       // through before it stopped is no result to report.
@@ -131,9 +139,10 @@ export const register: Register = on => {
     }
   }).catch(($, e, next) => next(e))
 
-  // The check's input is pinned to the wrapped command, which no permission
-  // rule matches; ask about the command Claude wrote and take a settled
-  // verdict. An `ask` falls through to the usual dialog or auto-mode check.
+  // The check's input is pinned to the wrapped command, which a rule written
+  // for the command Claude wrote may not match. A deny for that command still
+  // stands; anything else goes on to the usual check of the wrapped command, so
+  // the mod never grants a call itself.
   on('tool.check', { tool: 'Bash' }, async ($, e, next) => {
     const original = e.tool_use_id && originals.get(e.tool_use_id)
     if (!original) {
@@ -144,8 +153,14 @@ export const register: Register = on => {
       tool: 'Bash',
       input: { ...(e.input as object), command: original },
     })
+    if (verdict.decision === 'deny') {
+      return {
+        decision: 'deny',
+        reason: 'A permission rule denies this cargo command.',
+      }
+    }
 
-    return verdict.decision === 'ask' ? next(e) : verdict
+    return next(e)
   })
 
   // Shell commands usually fold into a group line (`Ran 2 shell commands`);

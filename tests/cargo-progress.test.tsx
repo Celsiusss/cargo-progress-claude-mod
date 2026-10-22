@@ -2,9 +2,9 @@ import { expect, test } from 'claude-code/testing'
 
 import { describeResult, drawBar, parseFrame, parseResults } from '../hooks/progress'
 
-test('a cargo command runs wrapped, and is checked as written', async ($, on) => {
+test('a cargo command runs wrapped, and is checked as written too', async ($, on) => {
   let ran = ''
-  let checked = ''
+  const checked: string[] = []
   on('env.get', () => ({ value: '/tmp/x' }))
   on('clock.every', () => ({ value: undefined }))
   on('tool.call', (_, e) => {
@@ -13,7 +13,7 @@ test('a cargo command runs wrapped, and is checked as written', async ($, on) =>
     return { result: {} }
   })
   on('tool.check', (_, e) => {
-    checked = (e.input as { command: string }).command
+    checked.push((e.input as { command: string }).command)
 
     return { decision: 'allow' }
   })
@@ -23,7 +23,27 @@ test('a cargo command runs wrapped, and is checked as written', async ($, on) =>
   expect(ran).toMatch(/^cargo\(\) \{/)
   expect(ran).toMatch(/CARGO_TERM_PROGRESS_WHEN=always/)
   expect(ran.endsWith('\ncargo build --release')).toBe(true)
-  expect(checked).toBe('cargo build --release')
+  expect(checked).toContain('cargo build --release')
+})
+
+test('a rule denying the command as written denies the wrapped call', async ($, on) => {
+  let ran = false
+  on('env.get', () => ({ value: '/tmp/x' }))
+  on('clock.every', () => ({ value: undefined }))
+  on('tool.call', () => {
+    ran = true
+
+    return { result: {} }
+  })
+  on('tool.check', (_, e) => ({
+    decision: (e.input as { command: string }).command === 'cargo publish' ? 'deny' : 'allow',
+  }))
+
+  const result = await $.tool.call({ tool: 'Bash', command: 'cargo publish' })
+
+  expect(ran).toBe(false)
+  expect(result.isError).toBe(true)
+  expect(result.text).toMatch(/denied by plugin cargo-progress/)
 })
 
 test('other commands run untouched', async ($, on) => {
